@@ -1,0 +1,36 @@
+# Heirloom Contracts — Cargo workspace root
+#
+# This workspace groups all Soroban smart contracts for the Heirloom
+# digital-legacy platform. Contracts live under `contracts/*`.
+
+[workspace]
+resolver = "2"
+members = ["contracts/legacy"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+authors = ["Heirloom"]
+license = "MIT"
+repository = "https://github.com/heirloom/heirloom-contracts"
+
+[workspace.dependencies]
+soroban-sdk = "22.0.0"
+
+# Optimize wasm output for size + determinism. These profiles apply to every
+# member crate when building the release artifact deployed on-chain.
+[profile.release]
+opt-level = "z"
+overflow-checks = true
+debug = 0
+strip = "symbols"
+debug-assertions = false
+panic = "abort"
+codegen-units = 1
+lto = true
+
+# A slightly relaxed profile used when building for local testing/CI where the
+# extra debug info speeds up diagnosing failures.
+[profile.release-with-logs]
+inherits = "release"
+debug-assertions = true

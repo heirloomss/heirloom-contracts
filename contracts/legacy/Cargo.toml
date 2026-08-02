@@ -1,0 +1,21 @@
+[package]
+name = "legacy"
+version = { workspace = true }
+edition = { workspace = true }
+authors = { workspace = true }
+license = { workspace = true }
+repository = { workspace = true }
+description = "Heirloom Legacy contract — trust-critical inheritance logic on Stellar/Soroban."
+
+# Build a dynamic library that compiles to a Wasm contract (`cdylib`) and also a
+# normal `rlib` so the crate can be unit-tested natively with `cargo test`.
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+soroban-sdk = { workspace = true }
+
+[dev-dependencies]
+# The `testutils` feature unlocks `Env::default`, auth mocking, and the
+# Stellar Asset Contract test token used by the unit tests.
+soroban-sdk = { workspace = true, features = ["testutils"] }

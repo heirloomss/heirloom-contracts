@@ -1,0 +1,6 @@
+# Pin the Rust toolchain so contract builds are reproducible across machines
+# and CI. The wasm32-unknown-unknown target is what Soroban contracts compile
+# to before deployment.
+[toolchain]
+channel = "1.81.0"
+targets = ["wasm32-unknown-unknown"]

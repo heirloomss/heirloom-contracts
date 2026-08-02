@@ -1,0 +1,11 @@
+# Heirloom Contracts — Stellar testnet deployment configuration.
+# Consumed by deploy tooling / CI; keep in sync with .env values.
+
+[network]
+name = "testnet"
+rpc_url = "https://soroban-testnet.stellar.org"
+network_passphrase = "Test SDF Network ; September 2015"
+
+[contract]
+# Filled in after a successful `scripts/deploy.sh` run.
+legacy_contract_id = ""

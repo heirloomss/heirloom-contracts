@@ -1,0 +1,16 @@
+# Rust / Cargo build output
+target/
+
+# Soroban / Stellar CLI local state
+.soroban/
+.stellar/
+
+# Compiled wasm artifacts outside of tracked release directories
+*.wasm
+
+# Local environment configuration (copy from .env.example)
+.env
+
+# Editor and OS noise
+.DS_Store
+*.swp
