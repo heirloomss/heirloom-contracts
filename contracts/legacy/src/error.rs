@@ -28,4 +28,12 @@ pub enum Error {
     NothingToClaim = 9,
     /// Provided configuration values (threshold, amount, etc.) are invalid.
     InvalidInput = 10,
+    /// The owner tried to deposit into a plan that is already funded.
+    AlreadyFunded = 11,
+    /// An action requiring deposited funds was attempted before `deposit`.
+    NotFunded = 12,
+    /// The contract's on-chain token balance is below the committed amount.
+    InsufficientBalance = 13,
+    /// A guardian or beneficiary address appears more than once in the plan.
+    DuplicateAddress = 14,
 }

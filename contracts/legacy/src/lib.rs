@@ -4,11 +4,16 @@
 //! Trust-critical, on-chain logic for the Heirloom digital-legacy platform.
 //!
 //! The contract models a single flow: an **owner** registers an inheritance
-//! **legacy plan** naming **guardians** and **beneficiaries**. If the owner
-//! misses a life check-in, guardians approve the plan. Once a configurable
-//! **threshold** of approvals is reached the plan is *Verified*, a **claim**
-//! can be created that splits assets across beneficiaries, and each
-//! beneficiary independently withdraws their allocation.
+//! **legacy plan** naming **guardians** and **beneficiaries** and committing a
+//! `token` + `total_amount`. The owner **deposits** those funds into the
+//! contract (status `Funded`). If the owner later misses a life check-in,
+//! guardians approve the plan; once a configurable **threshold** of approvals
+//! is reached the plan is *Verified*. Because the owner is presumed gone at
+//! that point, **`finalize_release` is permissionless** — anyone may trigger
+//! it once the plan is Verified and the deposited balance is present. It splits
+//! the assets across beneficiaries, and each beneficiary independently
+//! withdraws their allocation. The owner may **cancel** any time before release
+//! and is **refunded** the deposited balance.
 //!
 //! Deliberately out of scope (kept off-chain by design): document storage,
 //! identity/KYC, notifications, and any non-trust-critical application logic.
@@ -32,39 +37,63 @@ pub struct LegacyContract;
 
 #[contractimpl]
 impl LegacyContract {
-    /// Register a new legacy plan.
+    /// Register a new legacy plan (status `Draft`).
     ///
     /// * `owner` — the plan creator; must authorize the call.
-    /// * `guardians` — non-empty set of addresses that can approve verification.
+    /// * `token` — the asset the plan is funded in and pays out.
+    /// * `total_amount` — the amount the owner commits to deposit (> 0).
+    /// * `guardians` — non-empty set of *distinct* addresses that can approve.
     /// * `threshold` — approvals required to verify (1..=guardians.len()).
-    /// * `beneficiaries` — allocations whose `bps` must sum to exactly 10000.
+    /// * `beneficiaries` — *distinct* allocations whose `bps` sum to 10000.
     ///
-    /// Returns the newly assigned legacy id.
+    /// No funds move here; the owner must call [`deposit`] next. Returns the
+    /// newly assigned legacy id.
     pub fn create_legacy(
         env: Env,
         owner: Address,
+        token: Address,
+        total_amount: i128,
         guardians: Vec<Address>,
         threshold: u32,
         beneficiaries: Vec<BeneficiaryShare>,
     ) -> Result<u64, Error> {
         owner.require_auth();
 
-        // --- Validate guardians / threshold ---
+        // --- Validate amount ---
+        if total_amount <= 0 {
+            return Err(Error::InvalidInput);
+        }
+
+        // --- Validate guardians / threshold (reject duplicates) ---
         if guardians.is_empty() {
             return Err(Error::InvalidInput);
         }
         if threshold == 0 || threshold > guardians.len() {
             return Err(Error::InvalidInput);
         }
+        for i in 0..guardians.len() {
+            let g = guardians.get(i).unwrap();
+            for j in (i + 1)..guardians.len() {
+                if g == guardians.get(j).unwrap() {
+                    return Err(Error::DuplicateAddress);
+                }
+            }
+        }
 
-        // --- Validate beneficiary shares sum to exactly 10000 bps ---
+        // --- Validate beneficiary shares: distinct, non-zero, sum == 10000 ---
         if beneficiaries.is_empty() {
             return Err(Error::InvalidShares);
         }
         let mut total_bps: u32 = 0;
-        for share in beneficiaries.iter() {
+        for i in 0..beneficiaries.len() {
+            let share = beneficiaries.get(i).unwrap();
             if share.bps == 0 {
                 return Err(Error::InvalidShares);
+            }
+            for j in (i + 1)..beneficiaries.len() {
+                if share.beneficiary == beneficiaries.get(j).unwrap().beneficiary {
+                    return Err(Error::DuplicateAddress);
+                }
             }
             total_bps = total_bps
                 .checked_add(share.bps)
@@ -80,9 +109,10 @@ impl LegacyContract {
             guardians,
             threshold,
             beneficiaries,
-            status: LegacyStatus::Active,
-            token: None,
-            total_amount: 0,
+            status: LegacyStatus::Draft,
+            token,
+            total_amount,
+            deposited: false,
         };
         storage::set_plan(&env, id, &plan);
         storage::set_approvals(&env, id, &Vec::new(&env));
@@ -95,12 +125,50 @@ impl LegacyContract {
 
         Ok(id)
     }
+    /// Deposit the committed `total_amount` of the plan's `token` into the
+    /// contract, moving the plan `Draft -> Funded`.
+    ///
+    /// Only the owner may deposit, and only once. Pulls the funds via
+    /// `token.transfer(owner -> contract)`, so the owner must have authorized
+    /// the token allowance/transfer. Guardian approvals are only accepted once
+    /// a plan is `Funded`, so a plan can never be verified while unfunded.
+    pub fn deposit(env: Env, legacy_id: u64) -> Result<(), Error> {
+        let mut plan = storage::get_plan(&env, legacy_id)?;
+        plan.owner.require_auth();
+
+        if plan.status != LegacyStatus::Draft {
+            return Err(Error::InvalidStatus);
+        }
+        if plan.deposited {
+            return Err(Error::AlreadyFunded);
+        }
+
+        // Pull the committed amount from the owner into the contract.
+        let client = token::Client::new(&env, &plan.token);
+        client.transfer(
+            &plan.owner,
+            &env.current_contract_address(),
+            &plan.total_amount,
+        );
+
+        plan.deposited = true;
+        plan.status = LegacyStatus::Funded;
+        storage::set_plan(&env, legacy_id, &plan);
+        storage::extend_instance_ttl(&env);
+
+        env.events().publish(
+            (symbol_short!("deposited"), plan.owner),
+            (legacy_id, plan.total_amount),
+        );
+
+        Ok(())
+    }
 
     /// Record a guardian's approval for a plan.
     ///
-    /// The guardian must be part of the plan's guardian set and may not approve
-    /// twice. When the number of approvals reaches the threshold the plan
-    /// transitions `Active -> Verified`.
+    /// The plan must be `Funded`. The guardian must be part of the plan's
+    /// guardian set and may not approve twice. When the number of approvals
+    /// reaches the threshold the plan transitions `Funded -> Verified`.
     pub fn approve_guardian(
         env: Env,
         legacy_id: u64,
@@ -109,7 +177,7 @@ impl LegacyContract {
         guardian.require_auth();
 
         let mut plan = storage::get_plan(&env, legacy_id)?;
-        if plan.status != LegacyStatus::Active {
+        if plan.status != LegacyStatus::Funded {
             return Err(Error::InvalidStatus);
         }
 
@@ -142,36 +210,37 @@ impl LegacyContract {
         storage::extend_instance_ttl(&env);
         Ok(())
     }
-
-    /// Create the payout claim for a verified plan.
+    /// Finalize the release of a verified plan — **permissionless**.
     ///
-    /// Callable by the owner once the plan is `Verified`. Splits `total_amount`
-    /// of `token` across beneficiaries by their basis-point shares and records
-    /// a per-beneficiary [`ClaimData`]. Any integer-division dust is assigned to
-    /// the final beneficiary so the full amount is always allocated. Moves the
-    /// plan to `Released`.
-    ///
-    /// Note: this records claimable allocations; funds must be held by the
-    /// contract (transferred in out-of-band) so beneficiaries can withdraw.
-    pub fn create_claim(
-        env: Env,
-        legacy_id: u64,
-        token: Address,
-        total_amount: i128,
-    ) -> Result<(), Error> {
+    /// By the time a plan is `Verified`, the owner is presumed gone (the
+    /// guardians only approve after a missed check-in), so this call requires
+    /// **no authorization**: any party may trigger it. It is gated instead by
+    /// on-chain state — the plan must be `Verified` and the contract's actual
+    /// `token` balance must cover `total_amount` (closing the underfunded
+    /// loophole). Splits `total_amount` across beneficiaries by their
+    /// basis-point shares, assigns integer-division dust to the final
+    /// beneficiary, records a per-beneficiary [`ClaimData`], and moves the plan
+    /// to `Released`.
+    pub fn finalize_release(env: Env, legacy_id: u64) -> Result<(), Error> {
         let mut plan = storage::get_plan(&env, legacy_id)?;
-
-        // Only the owner may trigger release of the estate.
-        plan.owner.require_auth();
 
         if plan.status != LegacyStatus::Verified {
             return Err(Error::InvalidStatus);
         }
-        if total_amount <= 0 {
-            return Err(Error::InvalidInput);
+        if !plan.deposited {
+            return Err(Error::NotFunded);
+        }
+
+        // The funds must actually be present before we open claims. This closes
+        // the underfunded-release loophole even if a token misbehaves.
+        let token_client = token::Client::new(&env, &plan.token);
+        let balance = token_client.balance(&env.current_contract_address());
+        if balance < plan.total_amount {
+            return Err(Error::InsufficientBalance);
         }
 
         // Allocate per-beneficiary amounts; give remainder to the last one.
+        let total_amount = plan.total_amount;
         let count = plan.beneficiaries.len();
         let mut distributed: i128 = 0;
         let mut index: u32 = 0;
@@ -190,7 +259,7 @@ impl LegacyContract {
             };
 
             let claim = ClaimData {
-                token: token.clone(),
+                token: plan.token.clone(),
                 amount,
                 claimed: false,
             };
@@ -198,13 +267,11 @@ impl LegacyContract {
         }
 
         plan.status = LegacyStatus::Released;
-        plan.token = Some(token.clone());
-        plan.total_amount = total_amount;
         storage::set_plan(&env, legacy_id, &plan);
         storage::extend_instance_ttl(&env);
 
         env.events().publish(
-            (symbol_short!("claim_new"), token),
+            (symbol_short!("released"), plan.token),
             (legacy_id, total_amount),
         );
 
@@ -258,15 +325,33 @@ impl LegacyContract {
         Ok(amount)
     }
 
-    /// Cancel a plan while it is still `Active` or `Verified`.
+    /// Cancel a plan while it is still pre-release, refunding any deposit.
     ///
-    /// Only the owner may cancel, and never once assets have been released.
+    /// Only the owner may cancel, and never once assets have been released. If
+    /// the plan was funded, the full deposited `total_amount` is transferred
+    /// back to the owner before the status moves to `Cancelled` — a cancelled
+    /// plan never strands funds in the contract.
     pub fn cancel_legacy(env: Env, legacy_id: u64) -> Result<(), Error> {
         let mut plan = storage::get_plan(&env, legacy_id)?;
         plan.owner.require_auth();
 
         match plan.status {
-            LegacyStatus::Active | LegacyStatus::Verified => {
+            LegacyStatus::Draft | LegacyStatus::Funded | LegacyStatus::Verified => {
+                // Refund the deposit, if any, before cancelling.
+                if plan.deposited {
+                    let client = token::Client::new(&env, &plan.token);
+                    client.transfer(
+                        &env.current_contract_address(),
+                        &plan.owner,
+                        &plan.total_amount,
+                    );
+                    plan.deposited = false;
+                    env.events().publish(
+                        (symbol_short!("refunded"), plan.owner.clone()),
+                        (legacy_id, plan.total_amount),
+                    );
+                }
+
                 plan.status = LegacyStatus::Cancelled;
                 storage::set_plan(&env, legacy_id, &plan);
                 storage::extend_instance_ttl(&env);
@@ -304,3 +389,5 @@ impl LegacyContract {
 
 #[cfg(test)]
 mod test;
+
+

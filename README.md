@@ -2,27 +2,36 @@
 
 Soroban smart contracts for **Heirloom**, a digital-legacy platform on
 Stellar. The `legacy` contract holds the trust-critical inheritance flow: an
-owner registers a legacy plan naming guardians and beneficiaries; if a life
+owner registers a legacy plan naming guardians and beneficiaries and committing
+a token + amount, then **deposits** those funds into the contract. If a life
 check-in is missed, guardians verify the plan on-chain; once a configurable
-threshold of approvals is reached the estate is released and each beneficiary
-independently claims their allocation.
+threshold of approvals is reached, **release is permissionless** (the owner is
+presumed gone) and each beneficiary independently claims their allocation. The
+owner may cancel and be refunded any time before release.
 
 See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the full design.
 
 ## Features
 
-- **Legacy plans** — owner, guardian set, approval threshold, and
-  basis-point beneficiary allocations (must sum to exactly 10000 bps).
+- **Legacy plans** — owner, guardian set, approval threshold, committed token +
+  amount, and basis-point beneficiary allocations (must sum to exactly 10000
+  bps). Duplicate guardian/beneficiary addresses are rejected.
+- **Funding model** — the owner `deposit`s the committed amount into the
+  contract (`Draft` → `Funded`); approvals are only accepted once funded, so a
+  plan can never be verified while unfunded.
 - **M-of-N guardian verification** — e.g. 2-of-3 approvals move a plan from
-  `Active` to `Verified`; double approvals and non-guardians are rejected.
+  `Funded` to `Verified`; double approvals and non-guardians are rejected.
+- **Permissionless release** — once `Verified`, anyone may call
+  `finalize_release` (the owner is presumed gone); it is gated by an on-chain
+  balance check so an underfunded plan can't release.
 - **Claimable-balance-style payouts** — the contract custodies the token,
   records a per-beneficiary claim, and each beneficiary withdraws
   independently with double-claim protection.
-- **Owner cancellation** — allowed while `Active`/`Verified`, never after
-  release.
-- **Typed errors and events** — stable error codes and `created` /
-  `approved` / `verified` / `claim_new` / `claimed` / `cancelled` events for
-  off-chain indexing.
+- **Owner cancellation with refund** — allowed while `Draft`/`Funded`/`Verified`,
+  never after release; any deposited balance is refunded to the owner.
+- **Typed errors and events** — stable error codes and `created` / `deposited` /
+  `approved` / `verified` / `released` / `claimed` / `refunded` / `cancelled`
+  events for off-chain indexing.
 
 ## Tech stack
 
