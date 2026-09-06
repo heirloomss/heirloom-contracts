@@ -1,6 +1,5 @@
 # Pin the Rust toolchain so contract builds are reproducible across machines
-# and CI. The wasm32-unknown-unknown target is what Soroban contracts compile
-# to before deployment.
+# and CI. Modern Stellar/Soroban contract builds target wasm32v1-none.
 #
 # Pinned to 1.85+: the soroban-sdk 22 dependency tree pulls transitive crates
 # (e.g. zeroize_derive 1.5) that require Cargo's `edition2024` feature, which
@@ -8,4 +7,4 @@
 # to parse those manifests. Keep this at or above 1.85.0.
 [toolchain]
 channel = "1.85.0"
-targets = ["wasm32-unknown-unknown"]
+targets = ["wasm32v1-none"]
