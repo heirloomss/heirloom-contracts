@@ -18,13 +18,12 @@ NETWORK="${NETWORK:-testnet}"
 # Identity (key alias) that signs and pays for the deployment.
 SOURCE="${SOURCE:-heirloom-deployer}"
 
-# 1. Compile the workspace contracts to wasm. `stellar contract build` wraps
-#    `cargo build --target wasm32-unknown-unknown --release` with the correct
-#    flags for Soroban.
+# 1. Compile the workspace contracts to wasm. Modern Stellar CLI builds
+#    Soroban contracts for the wasm32v1-none target.
 echo "Building contracts..."
 stellar contract build
 
-WASM="target/wasm32-unknown-unknown/release/legacy.wasm"
+WASM="target/wasm32v1-none/release/legacy.wasm"
 if [[ ! -f "$WASM" ]]; then
   echo "error: expected wasm artifact not found at $WASM" >&2
   exit 1
@@ -38,10 +37,10 @@ CONTRACT_ID="$(stellar contract deploy \
   --source "$SOURCE" \
   --network "$NETWORK")"
 
-# 3. Print the contract id. Copy this into your .env as CONTRACT_ID.
+# 3. Print the contract id. Copy this into your .env as HEIRLOOM_CONTRACT_ID.
 echo ""
 echo "Deployed Legacy contract:"
 echo "  network:     $NETWORK"
 echo "  contract id: $CONTRACT_ID"
 echo ""
-echo "Next: export CONTRACT_ID=$CONTRACT_ID (or add it to .env)"
+echo "Next: set HEIRLOOM_CONTRACT_ID=$CONTRACT_ID in heirloom-api/.env"
