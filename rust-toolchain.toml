@@ -4,7 +4,10 @@
 # Pinned to 1.85+: the soroban-sdk 22 dependency tree pulls transitive crates
 # (e.g. zeroize_derive 1.5) that require Cargo's `edition2024` feature, which
 # only stabilized in Rust 1.85.0. Older pins (we previously tried 1.81.0) fail
-# to parse those manifests. Keep this at or above 1.85.0.
+# to parse those manifests.
+#
+# Bumped to 1.88.0: current transitive deps (darling 0.23, serde_with 3.21)
+# now require rustc >= 1.88.0. Keep this at or above 1.88.0.
 [toolchain]
-channel = "1.85.0"
+channel = "1.88.0"
 targets = ["wasm32v1-none"]
