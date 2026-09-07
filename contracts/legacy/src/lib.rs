@@ -25,9 +25,7 @@ mod types;
 pub use error::Error;
 pub use types::{BeneficiaryShare, ClaimData, LegacyPlan, LegacyStatus};
 
-use soroban_sdk::{
-    contract, contractimpl, symbol_short, token, Address, Env, Vec,
-};
+use soroban_sdk::{contract, contractimpl, symbol_short, token, Address, Env, Vec};
 
 /// Basis-point denominator: 10000 bps == 100%.
 const BPS_DENOMINATOR: i128 = 10_000;
@@ -118,10 +116,8 @@ impl LegacyContract {
         storage::set_approvals(&env, id, &Vec::new(&env));
         storage::extend_instance_ttl(&env);
 
-        env.events().publish(
-            (symbol_short!("created"), owner),
-            (id, plan.threshold),
-        );
+        env.events()
+            .publish((symbol_short!("created"), owner), (id, plan.threshold));
 
         Ok(id)
     }
@@ -169,11 +165,7 @@ impl LegacyContract {
     /// The plan must be `Funded`. The guardian must be part of the plan's
     /// guardian set and may not approve twice. When the number of approvals
     /// reaches the threshold the plan transitions `Funded -> Verified`.
-    pub fn approve_guardian(
-        env: Env,
-        legacy_id: u64,
-        guardian: Address,
-    ) -> Result<(), Error> {
+    pub fn approve_guardian(env: Env, legacy_id: u64, guardian: Address) -> Result<(), Error> {
         guardian.require_auth();
 
         let mut plan = storage::get_plan(&env, legacy_id)?;
@@ -283,11 +275,7 @@ impl LegacyContract {
     /// The beneficiary must authorize the call. Transfers their allocation from
     /// the contract to them, marks the portion claimed, and prevents any
     /// double-claim. Beneficiaries claim independently of one another.
-    pub fn claim_assets(
-        env: Env,
-        legacy_id: u64,
-        beneficiary: Address,
-    ) -> Result<i128, Error> {
+    pub fn claim_assets(env: Env, legacy_id: u64, beneficiary: Address) -> Result<i128, Error> {
         beneficiary.require_auth();
 
         let plan = storage::get_plan(&env, legacy_id)?;
@@ -305,11 +293,7 @@ impl LegacyContract {
 
         // Transfer the tokens held by the contract to the beneficiary.
         let client = token::Client::new(&env, &claim.token);
-        client.transfer(
-            &env.current_contract_address(),
-            &beneficiary,
-            &claim.amount,
-        );
+        client.transfer(&env.current_contract_address(), &beneficiary, &claim.amount);
 
         // Mark claimed only after the transfer succeeds.
         let amount = claim.amount;
@@ -317,10 +301,8 @@ impl LegacyContract {
         storage::set_claim(&env, legacy_id, &beneficiary, &claim);
         storage::extend_instance_ttl(&env);
 
-        env.events().publish(
-            (symbol_short!("claimed"), beneficiary),
-            (legacy_id, amount),
-        );
+        env.events()
+            .publish((symbol_short!("claimed"), beneficiary), (legacy_id, amount));
 
         Ok(amount)
     }
@@ -355,10 +337,8 @@ impl LegacyContract {
                 plan.status = LegacyStatus::Cancelled;
                 storage::set_plan(&env, legacy_id, &plan);
                 storage::extend_instance_ttl(&env);
-                env.events().publish(
-                    (symbol_short!("cancelled"), plan.owner),
-                    legacy_id,
-                );
+                env.events()
+                    .publish((symbol_short!("cancelled"), plan.owner), legacy_id);
                 Ok(())
             }
             _ => Err(Error::InvalidStatus),
@@ -378,16 +358,10 @@ impl LegacyContract {
     }
 
     /// Fetch a single beneficiary's claim record.
-    pub fn get_claim(
-        env: Env,
-        legacy_id: u64,
-        beneficiary: Address,
-    ) -> Result<ClaimData, Error> {
+    pub fn get_claim(env: Env, legacy_id: u64, beneficiary: Address) -> Result<ClaimData, Error> {
         storage::get_claim(&env, legacy_id, &beneficiary)
     }
 }
 
 #[cfg(test)]
 mod test;
-
-

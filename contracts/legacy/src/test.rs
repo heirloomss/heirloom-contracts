@@ -1,5 +1,3 @@
-#![cfg(test)]
-
 //! Unit tests for the Heirloom Legacy contract.
 //!
 //! Every test runs against a fresh in-memory `Env` with all auths mocked, so
@@ -9,9 +7,7 @@
 //! cancel/refund available before release.
 
 use crate::{BeneficiaryShare, Error, LegacyContract, LegacyContractClient, LegacyStatus};
-use soroban_sdk::{
-    testutils::Address as _, token, vec, Address, Env, Vec,
-};
+use soroban_sdk::{testutils::Address as _, token, vec, Address, Env, Vec};
 
 /// Register a fresh instance of the contract and return a client for it.
 fn create_client(env: &Env) -> LegacyContractClient<'_> {
@@ -172,9 +168,18 @@ fn test_dust_goes_to_last_beneficiary() {
     let guardians = vec![&env, g1.clone()];
     let beneficiaries = vec![
         &env,
-        BeneficiaryShare { beneficiary: b1.clone(), bps: 3_334 },
-        BeneficiaryShare { beneficiary: b2.clone(), bps: 3_333 },
-        BeneficiaryShare { beneficiary: b3.clone(), bps: 3_333 },
+        BeneficiaryShare {
+            beneficiary: b1.clone(),
+            bps: 3_334,
+        },
+        BeneficiaryShare {
+            beneficiary: b2.clone(),
+            bps: 3_333,
+        },
+        BeneficiaryShare {
+            beneficiary: b3.clone(),
+            bps: 3_333,
+        },
     ];
     let id = client.create_legacy(&owner, &token, &total, &guardians, &1, &beneficiaries);
 
@@ -215,8 +220,7 @@ fn test_invalid_shares_rejected() {
         },
     ];
 
-    let result =
-        client.try_create_legacy(&owner, &token, &1_000, &guardians, &1, &beneficiaries);
+    let result = client.try_create_legacy(&owner, &token, &1_000, &guardians, &1, &beneficiaries);
     assert_eq!(result, Err(Ok(Error::InvalidShares)));
 
     // Empty beneficiary list is also invalid.
@@ -237,7 +241,10 @@ fn test_non_positive_amount_rejected() {
     let guardians = vec![&env, Address::generate(&env)];
     let beneficiaries = vec![
         &env,
-        BeneficiaryShare { beneficiary: Address::generate(&env), bps: 10_000 },
+        BeneficiaryShare {
+            beneficiary: Address::generate(&env),
+            bps: 10_000,
+        },
     ];
 
     let result = client.try_create_legacy(&owner, &token, &0, &guardians, &1, &beneficiaries);
@@ -260,10 +267,12 @@ fn test_duplicate_addresses_rejected() {
     let guardians = vec![&env, dup_guardian.clone(), dup_guardian.clone()];
     let beneficiaries = vec![
         &env,
-        BeneficiaryShare { beneficiary: b1.clone(), bps: 10_000 },
+        BeneficiaryShare {
+            beneficiary: b1.clone(),
+            bps: 10_000,
+        },
     ];
-    let result =
-        client.try_create_legacy(&owner, &token, &1_000, &guardians, &1, &beneficiaries);
+    let result = client.try_create_legacy(&owner, &token, &1_000, &guardians, &1, &beneficiaries);
     assert_eq!(result, Err(Ok(Error::DuplicateAddress)));
 
     // Duplicate beneficiary.
@@ -271,11 +280,16 @@ fn test_duplicate_addresses_rejected() {
     let dup_beneficiary = Address::generate(&env);
     let beneficiaries = vec![
         &env,
-        BeneficiaryShare { beneficiary: dup_beneficiary.clone(), bps: 5_000 },
-        BeneficiaryShare { beneficiary: dup_beneficiary.clone(), bps: 5_000 },
+        BeneficiaryShare {
+            beneficiary: dup_beneficiary.clone(),
+            bps: 5_000,
+        },
+        BeneficiaryShare {
+            beneficiary: dup_beneficiary.clone(),
+            bps: 5_000,
+        },
     ];
-    let result =
-        client.try_create_legacy(&owner, &token, &1_000, &guardians, &1, &beneficiaries);
+    let result = client.try_create_legacy(&owner, &token, &1_000, &guardians, &1, &beneficiaries);
     assert_eq!(result, Err(Ok(Error::DuplicateAddress)));
 }
 
@@ -443,13 +457,11 @@ fn test_invalid_guardian_config_rejected() {
     let guardians = vec![&env, Address::generate(&env)];
 
     // Zero threshold.
-    let result =
-        client.try_create_legacy(&owner, &token, &1_000, &guardians, &0, &beneficiaries);
+    let result = client.try_create_legacy(&owner, &token, &1_000, &guardians, &0, &beneficiaries);
     assert_eq!(result, Err(Ok(Error::InvalidInput)));
 
     // Threshold larger than the guardian set.
-    let result =
-        client.try_create_legacy(&owner, &token, &1_000, &guardians, &2, &beneficiaries);
+    let result = client.try_create_legacy(&owner, &token, &1_000, &guardians, &2, &beneficiaries);
     assert_eq!(result, Err(Ok(Error::InvalidInput)));
 }
 

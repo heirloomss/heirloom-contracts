@@ -20,8 +20,8 @@ pub enum DataKey {
 // Persistent entries live longer than a single transaction and are the natural
 // home for plans/approvals/claims. We bump their TTL on write so active plans
 // are not archived out from under long-running inheritance timelines.
-const PERSISTENT_BUMP_AMOUNT: u32 = 34_560_00; // ~ >6 months of ledgers
-const PERSISTENT_LIFETIME_THRESHOLD: u32 = 17_280_00; // extend when < ~3 months
+const PERSISTENT_BUMP_AMOUNT: u32 = 3_456_000; // ~ >6 months of ledgers
+const PERSISTENT_LIFETIME_THRESHOLD: u32 = 1_728_000; // extend when < ~3 months
 
 /// Read the next legacy id and increment the stored counter.
 pub fn next_legacy_id(env: &Env) -> u64 {
@@ -91,8 +91,7 @@ pub fn get_claim(env: &Env, id: u64, beneficiary: &Address) -> Result<ClaimData,
 
 /// Extend the TTL of the contract instance so config/counter survive.
 pub fn extend_instance_ttl(env: &Env) {
-    env.storage().instance().extend_ttl(
-        PERSISTENT_LIFETIME_THRESHOLD,
-        PERSISTENT_BUMP_AMOUNT,
-    );
+    env.storage()
+        .instance()
+        .extend_ttl(PERSISTENT_LIFETIME_THRESHOLD, PERSISTENT_BUMP_AMOUNT);
 }
